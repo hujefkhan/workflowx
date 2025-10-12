@@ -37,6 +37,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ->execute([$task_id, $user_id]);
         $message = "🗑️ Task deleted (pending only).";
     }
+
+    // 🔹 Handle task overload request
+    if (isset($_POST['overload_task_id'])) {
+        $task_id = $_POST['overload_task_id'];
+        $pdo->prepare("UPDATE tasks SET status = 'overloaded' WHERE id = ? AND assigned_to = ? AND status = 'pending'")
+            ->execute([$task_id, $user_id]);
+        $message = "⚡ Task marked as overloaded (escalated to admin).";
+    }
 }
 
 $stmt = $pdo->prepare("SELECT * FROM leave_requests WHERE user_id = ? ORDER BY requested_at DESC");
@@ -48,165 +56,267 @@ $stmt->execute([$user_id]);
 $tasks = $stmt->fetchAll();
 ?>
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>
 <html>
 <head>
     <title>Employee Dashboard</title>
+
+    <a href="../chat_ai.php">🤖 AI Assistant</a>
+
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap');
+
         body {
-            font-family: 'Segoe UI', Tahoma, sans-serif;
-            background-color: #f4f6f8;
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #f7f8fc, #eaeaea);
             margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+
+        header {
+            background: #2b2d42;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+        }
+
+        header h2 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 24px;
+        }
+
+        header nav {
+            margin-top: 10px;
+        }
+
+        header nav a {
+            color: #ffd369;
+            margin: 0 12px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: 0.3s;
+        }
+
+        header nav a:hover {
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
             padding: 20px;
         }
 
-        h2, h3 {
-            color: #333;
-        }
-
-        a {
-            text-decoration: none;
-            color: #007bff;
-            margin-right: 10px;
-        }
-
-        a:hover {
-            text-decoration: underline;
-        }
-
         .message {
-            background-color: #e0ffe0;
-            border: 1px solid #70db70;
-            padding: 10px 15px;
-            margin-bottom: 20px;
+            background: #d4edda;
             color: #155724;
-            border-radius: 5px;
+            padding: 12px 18px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            animation: slideDown 0.6s ease;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 40px;
-            background: white;
-            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        h3 {
+            margin-top: 40px;
+            font-size: 22px;
+            color: #333;
+            border-left: 4px solid #2b2d42;
+            padding-left: 10px;
         }
 
-        th, td {
-            padding: 12px;
-            border: 1px solid #ccc;
-            text-align: left;
+        /* Card Layout */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
         }
 
-        th {
-            background-color: #007bff;
-            color: white;
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s;
+            animation: fadeInUp 0.8s ease;
         }
 
-        tr:nth-child(even) {
-            background-color: #f9f9f9;
+        .card:hover {
+            transform: translateY(-5px);
         }
+
+        .card h4 {
+            margin: 0 0 10px;
+            font-size: 18px;
+            color: #2b2d42;
+        }
+
+        .card p {
+            font-size: 14px;
+            color: #555;
+            margin: 5px 0;
+        }
+
+        .status {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            display: inline-block;
+        }
+
+        .pending { background: #fff3cd; color: #856404; }
+        .approved { background: #d4edda; color: #155724; }
+        .rejected { background: #f8d7da; color: #721c24; }
+        .completed { background: #cce5ff; color: #004085; }
 
         button {
-            padding: 6px 10px;
-            margin: 2px;
-            background-color: #007bff;
+            background: #2b2d42;
             color: white;
+            padding: 8px 14px;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
+            margin-top: 10px;
             cursor: pointer;
+            font-size: 13px;
+            transition: 0.3s;
         }
 
         button:hover {
-            background-color: #0056b3;
+            background: #1c1e33;
         }
 
         em {
             color: gray;
+            font-size: 13px;
+        }
+
+        /* Doodles */
+        .doodle {
+            position: absolute;
+            width: 80px;
+            opacity: 0.2;
+            z-index: -1;
+        }
+        .doodle1 { top: 50px; left: 20px; transform: rotate(-15deg); }
+        .doodle2 { bottom: 50px; right: 40px; transform: rotate(20deg); }
+        .doodle3 { top: 200px; right: 200px; transform: rotate(-30deg); }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-15px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
 <body>
 
-    <h2>Welcome, <?= htmlspecialchars($_SESSION['name']) ?></h2>
-    <p><a href="request_leave.php">➕ Request Leave</a> | <a href="../logout.php">Logout</a></p>
+    <header>
+        <h2>👋 Welcome, <?= htmlspecialchars($_SESSION['name']) ?></h2>
+        <nav>
+            <a href="request_leave.php">➕ Request Leave</a>
+            <a href="../logout.php">🚪 Logout</a>
+        </nav>
+    </header>
 
-    <?php if ($message): ?>
-        <div class="message"><?= $message ?></div>
-    <?php endif; ?>
+    <div class="container">
+        <?php if ($message): ?>
+            <div class="message"><?= $message ?></div>
+        <?php endif; ?>
 
-    <h3>Your Leave Requests</h3>
-    <table>
-        <tr>
-            <th>Leave Type</th>
-            <th>Start</th>
-            <th>End</th>
-            <th>Reason</th>
-            <th>Status</th>
-            <th>Requested At</th>
-            <th>Action</th>
-        </tr>
-        <?php if (count($my_leaves) > 0): ?>
-            <?php foreach ($my_leaves as $leave): ?>
-                <tr>
-                    <td><?= htmlspecialchars($leave['leave_type']) ?></td>
-                    <td><?= $leave['start_date'] ?></td>
-                    <td><?= $leave['end_date'] ?></td>
-                    <td><?= htmlspecialchars($leave['reason']) ?></td>
-                    <td><strong><?= strtoupper($leave['status']) ?></strong></td>
-                    <td><?= $leave['requested_at'] ?></td>
-                    <td>
+        <!-- Leave Requests -->
+        <h3>Your Leave Requests</h3>
+        <div class="card-grid">
+            <?php if (count($my_leaves) > 0): ?>
+                <?php foreach ($my_leaves as $leave): ?>
+                    <div class="card">
+                        <h4>📌 <?= htmlspecialchars($leave['leave_type']) ?></h4>
+                        <p><strong>From:</strong> <?= $leave['start_date'] ?> → <strong>To:</strong> <?= $leave['end_date'] ?></p>
+                        <p><strong>Reason:</strong> <?= htmlspecialchars($leave['reason']) ?></p>
+                        <span class="status <?= $leave['status'] ?>"><?= strtoupper($leave['status']) ?></span>
+                        <p><em>Requested: <?= $leave['requested_at'] ?></em></p>
+
                         <?php if ($leave['status'] === 'pending'): ?>
-                            <form method="POST" onsubmit="return confirm('Delete this pending request?')">
+                            <form method="POST" onsubmit="return confirm('Delete this request?')">
                                 <input type="hidden" name="delete_id" value="<?= $leave['id'] ?>">
-                                <button type="submit">Delete</button>
+                                <button type="submit">🗑️ Delete</button>
                             </form>
                         <?php else: ?>
                             <em>Locked</em>
                         <?php endif; ?>
-                    </td>
-                </tr>
-            <?php endforeach; ?>
-        <?php else: ?>
-            <tr><td colspan="7">No leave requests found.</td></tr>
-        <?php endif; ?>
-    </table>
+                    </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <p>No leave requests found.</p>
+            <?php endif; ?>
+        </div>
 
-    <h3>Your Tasks</h3>
-    <table>
-        <tr>
-            <th>Title</th>
-            <th>Description</th>
-            <th>Deadline</th>
-            <th>Status</th>
-            <th>Action</th>
-        </tr>
-        <?php if (count($tasks) > 0): ?>
-            <?php foreach ($tasks as $task): ?>
-                <tr>
-                    <td><?= htmlspecialchars($task['title']) ?></td>
-                    <td><?= htmlspecialchars($task['description']) ?></td>
-                    <td><?= $task['deadline'] ?></td>
-                    <td><strong><?= strtoupper($task['status']) ?></strong></td>
-                    <td>
-                        <?php if ($task['status'] === 'pending'): ?>
-                            <form method="POST" style="display:inline;">
-                                <input type="hidden" name="task_id" value="<?= $task['id'] ?>">
-                                <button type="submit">Mark Completed</button>
-                            </form>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this task?')">
-                                <input type="hidden" name="delete_task_id" value="<?= $task['id'] ?>">
-                                <button type="submit">Delete</button>
-                            </form>
-                        <?php else: ?>
-                            <em>Completed</em>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-            <?php endforeach; ?>
-        <?php else: ?>
-            <tr><td colspan="5">No tasks assigned.</td></tr>
-        <?php endif; ?>
-    </table>
+       <!-- Tasks -->
+<h3>Your Tasks</h3>
+<div class="card-grid">
+    <?php if (count($tasks) > 0): ?>
+        <?php foreach ($tasks as $task): ?>
+            <div class="card">
+                <h4>📝 <?= htmlspecialchars($task['title']) ?></h4>
+                <p><?= htmlspecialchars($task['description']) ?></p>
+                <p><strong>Deadline:</strong> <?= $task['deadline'] ?></p>
+                <span class="status <?= $task['status'] ?>"><?= strtoupper($task['status']) ?></span>
+
+                <?php if ($task['status'] === 'pending'): ?>
+                    <form method="POST" style="display:inline;">
+                        <input type="hidden" name="task_id" value="<?= $task['id'] ?>">
+                        <button type="submit">✅ Mark Completed</button>
+                    </form>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this task?')">
+                        <input type="hidden" name="delete_task_id" value="<?= $task['id'] ?>">
+                        <button type="submit">🗑️ Delete</button>
+                    </form>
+                    <!-- 🔹 New Overload Button -->
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('Mark this task as overloaded?')">
+                        <input type="hidden" name="overload_task_id" value="<?= $task['id'] ?>">
+                        <button type="submit" style="background:#e63946;">⚡ Overload</button>
+                    </form>
+                <?php elseif ($task['status'] === 'completed'): ?>
+                    <em>Completed</em>
+                <?php elseif ($task['status'] === 'overloaded'): ?>
+                    <em style="color:#e63946;">⚡ Overloaded</em>
+                <?php else: ?>
+                    <em><?= ucfirst($task['status']) ?></em>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
+    <?php else: ?>
+        <p>No tasks assigned.</p>
+    <?php endif; ?>
+</div>
+    <!-- Doodles -->
+    <img src="https://cdn-icons-png.flaticon.com/512/2910/2910768.png" class="doodle doodle1">
+    <img src="https://cdn-icons-png.flaticon.com/512/2910/2910761.png" class="doodle doodle2">
+    <img src="https://cdn-icons-png.flaticon.com/512/2910/2910780.png" class="doodle doodle3">
 
 </body>
 </html>
