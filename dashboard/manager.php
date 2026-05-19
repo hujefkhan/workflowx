@@ -243,6 +243,7 @@ $view = isset($_GET['view']) ? $_GET['view'] : 'dashboard';
       <a href="?view=dashboard">🏠 Dashboard</a>
       <a href="?view=history">📜 Leave History</a>
       <a href="assign_task.php">➕ Assign Task</a>
+      <a href="add_user.php">👤 Add User</a>
       <a href="../logout.php">Logout</a>
     </nav>
   </header>
